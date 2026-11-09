@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Дурак Казино: Ва-банк</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        :root {
+            --felt-green: #0a5c36;
+            --felt-dark: #032e1a;
+            --gold: #f39c12;
+            --gold-light: #f1c40f;
+            --red: #e74c3c;
+        }
+
+        body {
+            background: radial-gradient(circle at center, var(--felt-green) 0%, var(--felt-dark) 100%);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+        }
+
+        /* Стиль игральных карт */
+        .card {
+            width: 58px;
+            height: 86px;
+            background: #ffffff;
+            color: #1a1a1a;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 4px;
+            font-weight: 800;
+            font-size: 13px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+            cursor: pointer;
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+            position: relative;
+            flex-shrink: 0;
+            border: 1px solid rgba(0,0,0,0.1);
+        }
+
+        @media (min-width: 640px) {
+            .card {
+                width: 72px;
+                height: 104px;
+                font-size: 16px;
+                padding: 6px;
+            }
+        }
+
+        .card.red { color: var(--red); }
+        
+        .card.back {
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            border: 2px solid #ffffff;
+            cursor: default;
+        }
+
+        .card.selected {
+            transform: translateY(-12px);
+            box-shadow: 0 0 14px var(--gold-light), 0 8px 18px rgba(0,0,0,0.6);
+            border: 2px solid var(--gold);
+        }
+
+        /* Контейнеры пар карт на столе */
+        .card-pair {
+            position: relative;
+            width: 68px;
+            height: 96px;
+            flex-shrink: 0;
+        }
+
+        @media (min-width: 640px) {
+            .card-pair {
+                width: 84px;
+                height: 114px;
+            }
+        }
+
+        .card-pair .defend-card {
+            position: absolute;
+            left: 12px;
+            top: 12px;
+            z-index: 2;
+        }
+
+        .btn-casino {
+            background: linear-gradient(135deg, var(--gold), #d35400);
+            border: 1px solid rgba(255,255,255,0.3);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+            text-shadow: 0 1px 2px rgba(0,0,0,0.6);
+            transition: all 0.15s ease;
+        }
+
+        .btn-casino:active {
+            transform: scale(0.96);
+        }
+
+        .btn-secondary {
+            background: linear-gradient(135deg, #4b6584, #34495e);
+        }
+
+        .btn-green {
+            background: linear-gradient(135deg, #27ae60, #2ecc71);
+        }
+
+        /* Кастомный скроллбар для веера карт */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+</head>
+<body class="h-screen w-screen overflow-hidden text-white flex flex-col justify-between">
+
+    <!-- ЛОББИ -->
+    <div id="lobby-screen" class="fixed inset-0 bg-black/90 z-50 flex flex-col items-center justify-center p-4">
+        <div class="text-center max-w-sm w-full bg-emerald-950/90 p-6 rounded-3xl border border-yellow-500/30 shadow-2xl backdrop-blur-md">
+            <h1 class="text-3xl font-extrabold text-amber-400 tracking-wider mb-2 uppercase drop-shadow-md">
+                ♠️ Дурак Казино ♦️
+            </h1>
+            <p class="text-gray-300 text-xs sm:text-sm mb-6">
+                Займите место за столом против Дилера. Побеждайте и увеличивайте банк!
+            </p>
+
+            <div class="space-y-4">
+                <button onclick="startGame('free')" class="w-full btn-casino btn-green py-3 px-6 rounded-full font-bold text-base sm:text-lg text-white uppercase tracking-wider">
+                    🟢 Бесплатный стол (Демо)
+                </button>
+                <button onclick="startGame('paid')" class="w-full btn-casino py-3 px-6 rounded-full font-bold text-base sm:text-lg text-white uppercase tracking-wider">
+                    🔥 Ва-банк (Ставка $50)
+                </button>
+            </div>
+
+            <div class="mt-6 text-xs text-amber-200/70 font-semibold">
+                Ваш баланс: $<span id="lobby-balance">1000</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- ШАПКА КАЗИНО -->
+    <header class="bg-black/60 border-b border-amber-500/30 px-4 py-2 flex justify-between items-center z-10 shadow-md">
+        <div class="text-amber-400 font-bold text-xs sm:text-sm">
+            💎 Баланс: $<span id="balance-display">1000</span>
+        </div>
+        <div id="mode-display" class="font-extrabold uppercase tracking-wide text-xs text-center text-amber-200">
+            Стол: Демо
+        </div>
+        <div class="text-amber-300 font-bold text-xs sm:text-sm">
+            🏆 Кон: $<span id="pot-display">0</span>
+        </div>
+    </header>
+
+    <!-- ИГРОВОЕ ПОЛЕ -->
+    <main class="flex-1 flex flex-col justify-between items-center p-2 sm:p-4 relative">
+        
+        <!-- ЗОНА ДИЛЕРА -->
+        <div class="w-full flex flex-col items-center gap-1">
+            <div class="text-[11px] uppercase tracking-wider text-emerald-200/80 font-bold flex items-center gap-2">
+                <span>Дилер Казино</span>
+                <span id="dealer-card-count" class="bg-black/50 px-2 py-0.5 rounded-full text-[10px] text-amber-300">6 карт</span>
+            </div>
+            <div id="dealer-cards" class="flex gap-1 min-h-[88px] sm:min-h-[105px] items-center justify-center overflow-x-auto no-scrollbar max-w-full px-2"></div>
+        </div>
+
+        <!-- ИГРОВОЙ СТОЛ (БАТТЛФИЛД) -->
+        <div class="w-full max-w-xl my-auto flex flex-col items-center">
+            <div id="status-box" class="bg-black/60 text-amber-200 text-xs text-center py-1.5 px-4 rounded-full mb-2 border border-amber-500/20 shadow-inner max-w-xs sm:max-w-md w-full truncate">
+                Инициализация...
+            </div>
+
+            <div id="battlefield" class="w-full min-h-[110px] sm:min-h-[135px] bg-black/20 rounded-2xl p-2.5 border border-white/10 flex flex-wrap gap-2.5 items-center justify-center shadow-inner">
+                <!-- Карты на столе -->
+            </div>
+
+            <!-- ИНФО О КОЛОДЕ И КОЗЫРЕ -->
+            <div class="flex justify-between items-center w-full max-w-xs mt-2 px-2 text-[11px] font-semibold text-emerald-100">
+                <div class="bg-black/40 px-3 py-1 rounded-full border border-white/5">
+                    Колода: <span id="deck-count" class="text-amber-400 font-bold">36</span>
+                </div>
+                <div class="bg-black/40 px-3 py-1 rounded-full border border-white/5">
+                    Козырь: <span id="trump-display" class="text-amber-400 font-bold">♠️ 6</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- ЗОНА ИГРОКА -->
+        <div class="w-full flex flex-col items-center gap-2 pb-1">
+            <div id="player-cards" class="flex gap-1 min-h-[92px] sm:min-h-[110px] items-center justify-center overflow-x-auto no-scrollbar max-w-full px-2 py-1"></div>
+
+            <!-- УПРАВЛЕНИЕ -->
+            <div class="flex gap-2 w-full max-w-xs justify-center">
+                <button id="action-btn" onclick="handleMainAction()" class="flex-1 btn-casino py-2 px-3 rounded-full font-bold text-xs uppercase tracking-wider text-white">
+                    Бито
+                </button>
+                <button id="take-btn" onclick="handleTake()" class="flex-1 btn-casino btn-secondary py-2 px-3 rounded-full font-bold text-xs uppercase tracking-wider text-white">
+                    Взять
+                </button>
+                <button onclick="exitToLobby()" class="btn-casino btn-secondary py-2 px-3 rounded-full font-bold text-xs uppercase text-gray-300">
+                    Лобби
+                </button>
+            </div>
+        </div>
+
+    </main>
+
+    <script>
+        // WEB AUDIO SYNTHESIZER
+        const AudioEngine = {
+            ctx: null,
+            init() {
+                if (!this.ctx) {
+                    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+                if (this.ctx.state === 'suspended') {
+                    this.ctx.resume();
+                }
+            },
+            play(type) {
+                try {
+                    this.init();
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    const now = this.ctx.currentTime;
+
+                    if (type === 'card') {
+                        osc.type = 'triangle';
+                        osc.frequency.setValueAtTime(180, now);
+                        osc.frequency.exponentialRampToValueAtTime(50, now + 0.08);
+                        gain.gain.setValueAtTime(0.25, now);
+                        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
+                        osc.start(now);
+                        osc.stop(now + 0.08);
+                    } else if (type === 'click') {
+                        osc.type = 'square';
+                        osc.frequency.setValueAtTime(550, now);
+                        gain.gain.setValueAtTime(0.06, now);
+                        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.04);
+                        osc.start(now);
+                        osc.stop(now + 0.04);
+                    } else if (type === 'win') {
+                        osc.type = 'sine';
+                        osc.frequency.setValueAtTime(523.25, now);
+                        osc.frequency.setValueAtTime(659.25, now + 0.1);
+                        osc.frequency.setValueAtTime(783.99, now + 0.2);
+                        gain.gain.setValueAtTime(0.25, now);
+                        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+                        osc.start(now);
+                        osc.stop(now + 0.4);
+                    } else if (type === 'error') {
+                        osc.type = 'sawtooth';
+                        osc.frequency.setValueAtTime(140, now);
+                        osc.frequency.setValueAtTime(100, now + 0.1);
+                        gain.gain.setValueAtTime(0.2, now);
+                        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+                        osc.start(now);
+                        osc.stop(now + 0.2);
+                    }
+                } catch (e) { }
+            }
+        };
+
+        // НАСТРОЙКИ И СОСТОЯНИЕ ИГРЫ
+        const SUITS = ['♠️', '♥️', '♦️', '♣️'];
+        const RANKS = ['6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
+        const RANK_VALUES = {'6':6, '7':7, '8':8, '9':9, '10':10, 'J':11, 'Q':12, 'K':13, 'A':14};
+
+        let deck = [];
+        let playerHand = [];
+        let dealerHand = [];
+        let trumpCard = null;
+        let tablePairs = []; // Массив пар { attack: Card, defend: Card|null }
+        
+        let attacker = 'player'; // 'player' или 'dealer'
+        let balance = 1000;
+        let pot = 0;
+        let gameMode = 'free';
+        let isProcessingAI = false;
+
+        function startGame(mode) {
+            AudioEngine.play('click');
+            gameMode = mode;
+            if (gameMode === 'paid') {
+                if (balance < 50) {
+                    alert("Недостаточно средств для ставки $50!");
+                    return;
+                }
+                pot = 100;
+                balance -= 50;
+            } else {
+                pot = 0;
+            }
+
+            document.getElementById('lobby-screen').style.display = 'none';
+            initRound();
+        }
+
+        function exitToLobby() {
+            AudioEngine.play('click');
+            document.getElementById('lobby-screen').style.display = 'flex';
+            document.getElementById('lobby-balance').innerText = balance;
+        }
+
+        function initRound() {
+            deck = [];
+            for (let s of SUITS) {
+                for (let r of RANKS) {
+                    deck.push({ suit: s, rank: r, value: RANK_VALUES[r] });
+                }
+            }
+            deck.sort(() => Math.random() - 0.5);
+
+            playerHand = deck.splice(0, 6);
+            dealerHand = deck.splice(0, 6);
+            trumpCard = deck[deck.length - 1];
+
+            sortHand(playerHand);
+            sortHand(dealerHand);
+
+            tablePairs = [];
+            isProcessingAI = false;
+
+            // Определяем первый ход по младшему козырю
+            determineFirstAttacker();
+
+            AudioEngine.play('card');
+            updateUI();
+
+            if (attacker === 'dealer') {
+                setStatus("Младший козырь у дилера! Дилер атакует...");
+                setTimeout(processDealerAttack, 1000);
+            } else {
+                setStatus("Младший козырь у вас! Ваш ход.");
+            }
+        }
+
+        function determineFirstAttacker() {
+            let pMinTrump = getMinTrump(playerHand);
+            let dMinTrump = getMinTrump(dealerHand);
+
+            if (pMinTrump !== null && dMinTrump !== null) {
+                attacker = (pMinTrump < dMinTrump) ? 'player' : 'dealer';
+            } else if (pMinTrump !== null) {
+                attacker = 'player';
+            } else if (dMinTrump !== null) {
+                attacker = 'dealer';
+            } else {
+                attacker = 'player';
+            }
+        }
+
+        function getMinTrump(hand) {
+            let trumps = hand.filter(c => c.suit === trumpCard.suit);
+            if (trumps.length === 0) return null;
+            return Math.min(...trumps.map(c => c.value));
+        }
+
+        function sortHand(hand) {
+            hand.sort((a, b) => {
+                if (a.suit === trumpCard.suit && b.suit !== trumpCard.suit) return 1;
+                if (b.suit === trumpCard.suit && a.suit !== trumpCard.suit) return -1;
+                return a.value - b.value;
+            });
+        }
+
+        function canBeat(attackCard, defendCard) {
+            if (defendCard.suit === attackCard.suit) {
+                return defendCard.value > attackCard.value;
+            }
+            if (defendCard.suit === trumpCard.suit && attackCard.suit !== trumpCard.suit) {
+                return true;
+            }
+            return false;
+        }
+
+        function getTableRanks() {
+            let ranks = new Set();
+            tablePairs.forEach(p => {
+                ranks.add(p.attack.rank);
+                if (p.defend) ranks.add(p.defend.rank);
+            });
+            return ranks;
+        }
+
+        // КЛИК ПО КАРТЕ ИГРОКА
+        function onPlayerCardClick(index) {
+            if (isProcessingAI) return;
+            const card = playerHand[index];
+
+            // 1. ИГРОК ЗАЩИЩАЕТСЯ
+            if (attacker === 'dealer') {
+                const unbeatPair = tablePairs.find(p => !p.defend);
+                if (unbeatPair) {
+                    if (canBeat(unbeatPair.attack, card)) {
+                        unbeatPair.defend = playerHand.splice(index, 1)[0];
+                        AudioEngine.play('card');
+                        updateUI();
+
+                        const hasUnbeaten = tablePairs.some(p => !p.defend);
+                        if (hasUnbeaten) {
+                            setStatus("Отбито! Отбивайте следующую карту.");
+                        } else {
+                            setStatus("Вы отбились! Дилер думает...");
+                            setTimeout(processDealerTossOrPass, 1000);
+                        }
+                    } else {
+                        AudioEngine.play('error');
+                        setStatus("Этой картой побить нельзя!");
+                    }
+                }
+                return;
+            }
+
+            // 2. ИГРОК АТАКУЕТ
+            if (attacker === 'player') {
+                if (tablePairs.length >= 6) {
+                    setStatus("Максимум 6 карт на столе!");
+                    return;
+                }
+
+                if (tablePairs.length === 0) {
+                    tablePairs.push({ attack: playerHand.splice(index, 1)[0], defend: null });
+                    AudioEngine.play('card');
+                    updateUI();
+                    setStatus("Ход сделан. Дилер защищается...");
+                    setTimeout(processDealerDefend, 1000);
+                } else {
+                    const validRanks = getTableRanks();
+                    if (validRanks.has(card.rank)) {
+                        tablePairs.push({ attack: playerHand.splice(index, 1)[0], defend: null });
+                        AudioEngine.play('card');
+                        updateUI();
+                        setStatus("Вы подкинули карту. Дилер защищается...");
+                        setTimeout(processDealerDefend, 1000);
+                    } else {
+                        AudioEngine.play('error');
+                        setStatus("Можно подкидывать только карты имеющегося достоинства!");
+                    }
+                }
+            }
+        }
+
+        // КНОПКА «БИТО / ГОТОВО»
+        function handleMainAction() {
+            if (isProcessingAI) return;
+            AudioEngine.play('click');
+
+            if (tablePairs.length === 0) {
+                setStatus("Сделайте ход картой!");
+                return;
+            }
+
+            const unbeatPair = tablePairs.find(p => !p.defend);
+            if (unbeatPair) {
+                setStatus("Нельзя завершить раунд — есть непокрытые карты!");
+                AudioEngine.play('error');
+                return;
+            }
+
+            // Бито успешно
+            if (attacker === 'player') {
+                finishRound('dealer'); // Отбился дилер -> следующий атакует дилер
+            } else {
+                finishRound('player'); // Отбился игрок -> следующий атакует игрок
+            }
+        }
+
+        // КНОПКА «ВЗЯТЬ»
+        function handleTake() {
+            if (isProcessingAI || attacker === 'player' || tablePairs.length === 0) return;
+
+            AudioEngine.play('click');
+            setStatus("Вы забираете карты со стола...");
+
+            setTimeout(() => {
+                AudioEngine.play('card');
+                tablePairs.forEach(p => {
+                    playerHand.push(p.attack);
+                    if (p.defend) playerHand.push(p.defend);
+                });
+                tablePairs = [];
+                sortHand(playerHand);
+                refillHands();
+
+                attacker = 'dealer';
+                updateUI();
+                setStatus("Вы взяли карты! Дилер ходит снова.");
+                setTimeout(processDealerAttack, 1000);
+            }, 700);
+        }
+
+        // ИСПОЛНИТЕЛЬНЫЙ ИИ ДИЛЕРА
+        function processDealerAttack() {
+            if (dealerHand.length === 0 || checkGameOver()) return;
+
+            isProcessingAI = true;
+            let attackCard = dealerHand.shift();
+            tablePairs.push({ attack: attackCard, defend: null });
+
+            AudioEngine.play('card');
+            isProcessingAI = false;
+            updateUI();
+            setStatus("Дилер пошел карту! Тапните по своей карте, чтобы побить её.");
+        }
+
+        function processDealerDefend() {
+            isProcessingAI = true;
+            const unbeatPair = tablePairs.find(p => !p.defend);
+            if (!unbeatPair) {
+                isProcessingAI = false;
+                return;
+            }
+
+            const attackCard = unbeatPair.attack;
+            let defendIndex = -1;
+
+            // Находим наименьшую подходящую карту
+            for (let i = 0; i < dealerHand.length; i++) {
+                if (canBeat(attackCard, dealerHand[i])) {
+                    defendIndex = i;
+                    break;
+                }
+            }
+
+            if (defendIndex !== -1) {
+                unbeatPair.defend = dealerHand.splice(defendIndex, 1)[0];
+                AudioEngine.play('card');
+                isProcessingAI = false;
+                updateUI();
+
+                if (playerHand.length > 0 && tablePairs.length < 6) {
+                    setStatus("Дилер отбился! Вы можете подкинуть ещё или нажать «Бито».");
+                } else {
+                    setTimeout(() => finishRound('dealer'), 1000);
+                }
+            } else {
+                setStatus("Дилер не может отбиться и берет карты!");
+                setTimeout(() => {
+                    AudioEngine.play('card');
+                    tablePairs.forEach(p => {
+                        dealerHand.push(p.attack);
+                        if (p.defend) dealerHand.push(p.defend);
+                    });
+                    tablePairs = [];
+                    sortHand(dealerHand);
+                    refillHands();
+
+                    attacker = 'player';
+                    isProcessingAI = false;
+                    updateUI();
+                    setStatus("Дилер взял карты. Ваш ход!");
+                }, 1000);
+            }
+        }
+
+        function processDealerTossOrPass() {
+            isProcessingAI = true;
+            const validRanks = getTableRanks();
+            let tossIndex = -1;
+
+            if (tablePairs.length < 6 && playerHand.length > 0) {
+                for (let i = 0; i < dealerHand.length; i++) {
+                    if (validRanks.has(dealerHand[i].rank) && dealerHand[i].suit !== trumpCard.suit) {
+                        tossIndex = i;
+                        break;
+                    }
+                }
+            }
+
+            if (tossIndex !== -1) {
+                let tossCard = dealerHand.splice(tossIndex, 1)[0];
+                tablePairs.push({ attack: tossCard, defend: null });
+                AudioEngine.play('card');
+                isProcessingAI = false;
+                updateUI();
+                setStatus("Дилер подкинул карту! Отбивайтесь.");
+            } else {
+                setStatus("Дилер пасует (Бито)!");
+                isProcessingAI = false;
+                setTimeout(() => finishRound('player'), 1000);
+            }
+        }
+
+        function finishRound(nextAttacker) {
+            tablePairs = [];
+            refillHands();
+            attacker = nextAttacker;
+            updateUI();
+
+            if (checkGameOver()) return;
+
+            if (attacker === 'dealer') {
+                setStatus("Бито! Ход дилера...");
+                setTimeout(processDealerAttack, 1000);
+            } else {
+                setStatus("Бито! Ваш ход.");
+            }
+        }
+
+        function refillHands() {
+            while (playerHand.length < 6 && deck.length > 0) {
+                playerHand.push(deck.pop());
+            }
+            while (dealerHand.length < 6 && deck.length > 0) {
+                dealerHand.push(deck.pop());
+            }
+            sortHand(playerHand);
+            sortHand(dealerHand);
+        }
+
+        function checkGameOver() {
+            if (deck.length === 0) {
+                if (playerHand.length === 0 && dealerHand.length === 0) {
+                    alert("🤝 Ничья! Все карты сыграны.");
+                    if (gameMode === 'paid') balance += 50;
+                    exitToLobby();
+                    return true;
+                } else if (playerHand.length === 0) {
+                    AudioEngine.play('win');
+                    if (gameMode === 'paid') {
+                        balance += pot;
+                        alert(`🎉 Победа! Вы забрали банк $${pot}!`);
+                    } else {
+                        alert("🎉 Победа в демо-режиме!");
+                    }
+                    exitToLobby();
+                    return true;
+                } else if (dealerHand.length === 0) {
+                    AudioEngine.play('error');
+                    alert("💥 Дилер очистил руку! Вы проиграли.");
+                    exitToLobby();
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        function updateUI() {
+            document.getElementById('balance-display').innerText = balance;
+            document.getElementById('pot-display').innerText = pot;
+            document.getElementById('mode-display').innerText = gameMode === 'paid' ? 'Ва-банк ($50)' : 'Стол: Демо';
+            document.getElementById('deck-count').innerText = deck.length;
+            document.getElementById('trump-display').innerText = trumpCard ? `${trumpCard.rank} ${trumpCard.suit}` : '-';
+            document.getElementById('dealer-card-count').innerText = `${dealerHand.length} карт`;
+
+            // Рука Дилера
+            const dealerContainer = document.getElementById('dealer-cards');
+            dealerContainer.innerHTML = '';
+            dealerHand.forEach(() => {
+                const c = document.createElement('div');
+                c.className = 'card back';
+                dealerContainer.appendChild(c);
+            });
+
+            // Рука Игрока
+            const playerContainer = document.getElementById('player-cards');
+            playerContainer.innerHTML = '';
+            playerHand.forEach((card, idx) => {
+                const c = document.createElement('div');
+                const isRed = card.suit === '♥️' || card.suit === '♦️';
+                c.className = `card ${isRed ? 'red' : ''}`;
+                c.innerHTML = `
+                    <div class="leading-none">${card.rank}<br><span class="text-[10px]">${card.suit}</span></div>
+                    <div class="self-center text-lg">${card.suit}</div>
+                    <div class="self-end leading-none rotate-180">${card.rank}<br><span class="text-[10px]">${card.suit}</span></div>
+                `;
+                c.onclick = () => onPlayerCardClick(idx);
+                playerContainer.appendChild(c);
+            });
+
+            // Поле боя
+            const fieldContainer = document.getElementById('battlefield');
+            fieldContainer.innerHTML = '';
+
+            tablePairs.forEach(pair => {
+                const pairEl = document.createElement('div');
+                pairEl.className = 'card-pair';
+
+                const atk = pair.attack;
+                const atkRed = atk.suit === '♥️' || atk.suit === '♦️';
+                const atkEl = document.createElement('div');
+                atkEl.className = `card ${atkRed ? 'red' : ''}`;
+                atkEl.innerHTML = `
+                    <div class="leading-none">${atk.rank}<br><span class="text-[10px]">${atk.suit}</span></div>
+                    <div class="self-center text-base">${atk.suit}</div>
+                `;
+                pairEl.appendChild(atkEl);
+
+                if (pair.defend) {
+                    const def = pair.defend;
+                    const defRed = def.suit === '♥️' || def.suit === '♦️';
+                    const defEl = document.createElement('div');
+                    defEl.className = `card defend-card ${defRed ? 'red' : ''}`;
+                    defEl.innerHTML = `
+                        <div class="leading-none">${def.rank}<br><span class="text-[10px]">${def.suit}</span></div>
+                        <div class="self-center text-base">${def.suit}</div>
+                    `;
+                    pairEl.appendChild(defEl);
+                }
+
+                fieldContainer.appendChild(pairEl);
+            });
+
+            // Доступность кнопок управления
+            const actionBtn = document.getElementById('action-btn');
+            const takeBtn = document.getElementById('take-btn');
+
+            if (attacker === 'player') {
+                takeBtn.style.opacity = '0.4';
+                takeBtn.style.pointerEvents = 'none';
+                actionBtn.style.opacity = '1';
+                actionBtn.style.pointerEvents = 'auto';
+            } else {
+                const unbeatPair = tablePairs.find(p => !p.defend);
+                if (unbeatPair) {
+                    actionBtn.style.opacity = '0.4';
+                    actionBtn.style.pointerEvents = 'none';
+                    takeBtn.style.opacity = '1';
+                    takeBtn.style.pointerEvents = 'auto';
+                } else {
+                    actionBtn.style.opacity = '1';
+                    actionBtn.style.pointerEvents = 'auto';
+                    takeBtn.style.opacity = '0.4';
+                    takeBtn.style.pointerEvents = 'none';
+                }
+            }
+        }
+
+        function setStatus(text) {
+            document.getElementById('status-box').innerText = text;
+        }
+    </script>
+</body>
+</html>
